@@ -1,4 +1,13 @@
-"""Configuration management for Backpack CLI Bot."""
+"""Configuration management for Backpack CLI Bot.
+
+SECURITY WARNINGS:
+- Never commit your .env file to version control
+- Never share your API keys with anyone
+- Rotate your API keys regularly (monthly recommended)
+- Use read-only API keys if you only need to view data
+- Set IP restrictions on your API keys when possible
+- Monitor your API key usage for suspicious activity
+"""
 
 import os
 from dotenv import load_dotenv

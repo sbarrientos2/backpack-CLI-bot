@@ -117,14 +117,18 @@ class BackpackClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:
-            # Try to get more detailed error message from response
-            error_detail = str(e)
+            # Get error message without exposing sensitive data
+            status_code = e.response.status_code if hasattr(e, 'response') else 'unknown'
+            error_msg = f"API request failed with status {status_code}"
+
+            # Only include response text for non-auth errors to avoid key leakage
             try:
-                if hasattr(e.response, 'text') and e.response.text:
-                    error_detail = f"{e} - {e.response.text}"
+                if hasattr(e.response, 'text') and e.response.text and status_code != 401:
+                    # Sanitize error message - don't include full response for auth errors
+                    error_msg = f"{error_msg} - {e.response.text[:200]}"
             except:
                 pass
-            raise Exception(f"API request failed: {error_detail}")
+            raise Exception(error_msg)
         except requests.exceptions.RequestException as e:
             raise Exception(f"API request failed: {str(e)}")
 
