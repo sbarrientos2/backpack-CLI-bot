@@ -189,8 +189,9 @@ class CLI:
         help_text.append("p - Refresh positions | ", style="white")
         help_text.append("o - Refresh orders | ", style="white")
         help_text.append("c - Cancel all orders\n", style="white")
+        help_text.append("cr - Cancel price range | ", style="yellow")
         help_text.append("sym - Change symbol | ", style="yellow")
-        help_text.append("r - Refresh all | ", style="white")
+        help_text.append("r - Refresh all\n", style="white")
         help_text.append("h - Show help | ", style="white")
         help_text.append("q - Quit", style="white")
 
@@ -389,6 +390,70 @@ class CLI:
 
         self.console.input("\nPress Enter to continue...")
 
+    def handle_cancel_price_range(self):
+        """Handle cancel orders in price range."""
+        try:
+            self.console.print(f"[bold yellow]Cancel Orders in Price Range - {self.current_symbol}[/bold yellow]")
+            self.console.print(f"Current price: ${format_price(self.current_price)}\n")
+
+            # Get upper price bound
+            upper_str = self.console.input("[yellow]Enter upper price bound: [/yellow]")
+            price_high = float(upper_str.strip())
+
+            # Get lower price bound
+            lower_str = self.console.input("[yellow]Enter lower price bound: [/yellow]")
+            price_low = float(lower_str.strip())
+
+            if price_low <= 0 or price_high <= 0:
+                self.console.print("[red]Prices must be greater than 0[/red]")
+                self.console.input("\nPress Enter to continue...")
+                return
+
+            if price_low >= price_high:
+                self.console.print("[red]Lower price must be less than upper price[/red]")
+                self.console.input("\nPress Enter to continue...")
+                return
+
+            # Show preview of orders that will be cancelled
+            orders_in_range = [
+                order for order in self.order_manager.get_open_orders(self.current_symbol)
+                if price_low <= order.price <= price_high
+            ]
+
+            if not orders_in_range:
+                self.console.print(f"\n[yellow]No orders found in price range ${price_low:.4f} - ${price_high:.4f}[/yellow]")
+                self.console.input("\nPress Enter to continue...")
+                return
+
+            # Display orders to be cancelled
+            self.console.print(f"\n[bold]Orders to be cancelled:[/bold]")
+            for order in orders_in_range:
+                self.console.print(f"  {order.side} {order.quantity:.4f} @ ${order.price:.4f} (ID: {order.order_id[:8]})")
+
+            # Confirm cancellation
+            confirm = self.console.input(f"\n[yellow]Cancel {len(orders_in_range)} order(s)? (y/n): [/yellow]")
+            if confirm.lower() != 'y':
+                self.console.print("[yellow]Cancelled[/yellow]")
+                self.console.input("\nPress Enter to continue...")
+                return
+
+            # Cancel orders
+            successful, total = self.order_manager.cancel_orders_in_price_range(
+                self.current_symbol, price_low, price_high
+            )
+
+            if successful == total:
+                self.console.print(f"\n[bold green]Successfully cancelled {successful}/{total} orders[/bold green]")
+            else:
+                self.console.print(f"\n[bold yellow]Cancelled {successful}/{total} orders[/bold yellow]")
+
+        except ValueError:
+            self.console.print("[red]Invalid input. Please enter valid numbers.[/red]")
+        except Exception as e:
+            self.console.print(f"[red]Error: {e}[/red]")
+
+        self.console.input("\nPress Enter to continue...")
+
     def handle_change_symbol(self):
         """Handle symbol change."""
         new_symbol = self.console.input("[yellow]Enter new symbol (e.g., BTC_USDC): [/yellow]")
@@ -563,6 +628,8 @@ class CLI:
                 self.console.input("\nPress Enter to continue...")
             elif command == 'c':
                 self.handle_cancel_all()
+            elif command == 'cr':
+                self.handle_cancel_price_range()
             elif command == 'sym':
                 self.handle_change_symbol()
             elif command == 'r':

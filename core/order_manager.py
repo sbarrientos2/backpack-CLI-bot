@@ -203,6 +203,45 @@ class OrderManager:
             print(f"Error canceling all orders: {e}")
             return False
 
+    def cancel_orders_in_price_range(self, symbol: str, price_low: float, price_high: float) -> tuple[int, int]:
+        """Cancel orders within a specific price range.
+
+        Args:
+            symbol: Trading pair symbol
+            price_low: Lower price bound
+            price_high: Upper price bound
+
+        Returns:
+            Tuple of (successful_cancellations, total_orders_in_range)
+        """
+        # Get current open orders for this symbol
+        orders_in_range = [
+            order for order in self.open_orders.values()
+            if order.symbol == symbol and price_low <= order.price <= price_high
+        ]
+
+        if not orders_in_range:
+            return 0, 0
+
+        successful = 0
+        total = len(orders_in_range)
+
+        print(f"\nFound {total} order(s) in price range ${price_low:.4f} - ${price_high:.4f}")
+        print("Canceling orders...")
+
+        for order in orders_in_range:
+            try:
+                self.client.cancel_order(symbol, order.order_id)
+                if order.order_id in self.open_orders:
+                    cancelled_order = self.open_orders.pop(order.order_id)
+                    self.order_history.append(cancelled_order)
+                successful += 1
+                print(f"  ✓ Cancelled: {order.side} {order.quantity:.4f} @ ${order.price:.4f} (ID: {order.order_id[:8]})")
+            except Exception as e:
+                print(f"  ✗ Failed to cancel order {order.order_id[:8]}: {e}")
+
+        return successful, total
+
     def refresh_open_orders(self, symbol: Optional[str] = None) -> List[Order]:
         """Refresh open orders from API.
 
