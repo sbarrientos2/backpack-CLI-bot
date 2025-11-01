@@ -83,11 +83,11 @@ class PositionManager:
         self.positions: Dict[str, Position] = {}
         self.balances: Dict[str, float] = {}
 
-    def refresh_positions(self) -> List[Position]:
+    def refresh_positions(self) -> tuple[List[Position], bool]:
         """Refresh positions from API.
 
         Returns:
-            List of current positions
+            Tuple of (list of current positions, positions_available flag)
         """
         try:
             positions_data = self.client.get_positions()
@@ -100,12 +100,14 @@ class PositionManager:
                     self.positions[position.symbol] = position
                     positions.append(position)
 
-            return positions
+            return positions, True
         except Exception as e:
-            # Suppress 404 errors for positions (may not be available for spot-only accounts)
-            if "404" not in str(e):
+            # 404 means positions API not available (spot-only account or sub-account without perps)
+            if "404" in str(e):
+                return [], False
+            else:
                 print(f"Error refreshing positions: {e}")
-            return []
+                return [], True
 
     def refresh_balances(self):
         """Refresh account balances from API."""
@@ -116,14 +118,17 @@ class PositionManager:
             # Parse balance data based on Backpack API response
             # The API returns an object where keys are asset symbols
             # Format: { "BTC": { "available": "1.5", "locked": "0.25", "staked": "0" }, ... }
+            # Note: "staked" includes auto-lent funds
             for asset, balance_data in account_data.items():
                 if isinstance(balance_data, dict):  # Ensure it's a balance object
                     free = float(balance_data.get("available", 0))
                     locked = float(balance_data.get("locked", 0))
+                    staked = float(balance_data.get("staked", 0))
                     self.balances[asset] = {
                         "free": free,
                         "locked": locked,
-                        "total": free + locked
+                        "staked": staked,
+                        "total": free + locked + staked
                     }
         except Exception as e:
             print(f"Error refreshing balances: {e}")

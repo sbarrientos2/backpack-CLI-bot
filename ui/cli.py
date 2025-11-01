@@ -2,6 +2,8 @@
 
 import os
 import sys
+import threading
+import time
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
@@ -15,11 +17,9 @@ from datetime import datetime
 
 from api.backpack import BackpackClient
 from core.order_manager import OrderManager
-from core.position_manager import PositionManager
-from core.risk_manager import RiskManager
 from utils.helpers import (
     format_price, format_quantity, format_percentage,
-    format_currency, color_pnl, parse_order_input
+    format_currency, parse_order_input
 )
 from config import config
 
@@ -36,12 +36,16 @@ class CLI:
         self.client = client
         self.console = Console()
         self.order_manager = OrderManager(client)
-        self.position_manager = PositionManager(client)
-        self.risk_manager = RiskManager()
 
         self.current_symbol = config.DEFAULT_SYMBOL
         self.running = False
         self.current_price = 0.0
+        self.balances = {}
+
+        # Auto-refresh settings
+        self.auto_refresh_interval = 10  # seconds
+        self.last_refresh_time = 0
+        self.refresh_lock = threading.Lock()
 
         # Key bindings
         self.kb = KeyBindings()
@@ -62,56 +66,28 @@ class CLI:
         Returns:
             Rich Panel with header info
         """
-        portfolio_value = self.position_manager.get_portfolio_value()
-        total_pnl = self.position_manager.get_total_pnl()
-        pnl_color = color_pnl(total_pnl)
+        # Calculate portfolio value from USDC/USDT balances
+        portfolio_value = 0.0
+        for asset in ["USDC", "USDT"]:
+            if asset in self.balances:
+                portfolio_value += self.balances[asset].get("total", 0)
+
+        # Calculate time since last refresh
+        time_since_refresh = int(time.time() - self.last_refresh_time) if self.last_refresh_time > 0 else 0
 
         header_text = Text()
-        header_text.append("Backpack CLI Bot", style="bold cyan")
+        header_text.append("Backpack Spot Trading Bot", style="bold cyan")
         header_text.append(f" | Symbol: ", style="white")
         header_text.append(f"{self.current_symbol}", style="bold yellow")
         header_text.append(f" | Price: ", style="white")
         header_text.append(f"${format_price(self.current_price)}", style="bold white")
         header_text.append(f" | Portfolio: ", style="white")
         header_text.append(f"{format_currency(portfolio_value)}", style="bold green")
-        header_text.append(f" | PnL: ", style="white")
-        header_text.append(f"{format_currency(total_pnl)}", style=f"bold {pnl_color}")
+        header_text.append(f" | Updated: ", style="white")
+        header_text.append(f"{time_since_refresh}s ago", style="dim")
 
         return Panel(header_text, border_style="blue")
 
-    def display_positions(self) -> Table:
-        """Create positions table.
-
-        Returns:
-            Rich Table with positions
-        """
-        table = Table(title="Positions", show_header=True, header_style="bold magenta")
-        table.add_column("Symbol", style="cyan")
-        table.add_column("Side", style="white")
-        table.add_column("Quantity", justify="right")
-        table.add_column("Entry", justify="right")
-        table.add_column("Mark", justify="right")
-        table.add_column("PnL", justify="right")
-        table.add_column("PnL %", justify="right")
-
-        positions = self.position_manager.get_all_positions()
-
-        if not positions:
-            table.add_row("No positions", "-", "-", "-", "-", "-", "-")
-        else:
-            for pos in positions:
-                pnl_color = color_pnl(pos.unrealized_pnl)
-                table.add_row(
-                    pos.symbol,
-                    pos.side,
-                    format_quantity(pos.quantity),
-                    format_price(pos.entry_price),
-                    format_price(pos.mark_price),
-                    f"[{pnl_color}]{format_currency(pos.unrealized_pnl)}[/{pnl_color}]",
-                    f"[{pnl_color}]{format_percentage(pos.pnl_percentage)}[/{pnl_color}]"
-                )
-
-        return table
 
     def display_orders(self) -> Table:
         """Create orders table.
@@ -156,17 +132,19 @@ class CLI:
         table.add_column("Asset", style="cyan")
         table.add_column("Free", justify="right", style="green")
         table.add_column("Locked", justify="right", style="yellow")
+        table.add_column("Staked", justify="right", style="blue")
         table.add_column("Total", justify="right", style="white")
 
-        if not self.position_manager.balances:
-            table.add_row("No balances", "-", "-", "-")
+        if not self.balances:
+            table.add_row("No balances", "-", "-", "-", "-")
         else:
-            for asset, balance in self.position_manager.balances.items():
+            for asset, balance in self.balances.items():
                 if balance["total"] > 0:  # Only show non-zero balances
                     table.add_row(
                         asset,
                         format_quantity(balance["free"]),
                         format_quantity(balance["locked"]),
+                        format_quantity(balance.get("staked", 0)),
                         format_quantity(balance["total"])
                     )
 
@@ -186,10 +164,9 @@ class CLI:
         help_text.append("k - Limit sell\n", style="magenta")
         help_text.append("tb - Tiered buy | ", style="bold cyan")
         help_text.append("ts - Tiered sell\n", style="bold magenta")
-        help_text.append("p - Refresh positions | ", style="white")
         help_text.append("o - Refresh orders | ", style="white")
-        help_text.append("c - Cancel all orders\n", style="white")
-        help_text.append("cr - Cancel price range | ", style="yellow")
+        help_text.append("c - Cancel all orders | ", style="white")
+        help_text.append("cr - Cancel price range\n", style="yellow")
         help_text.append("sym - Change symbol | ", style="yellow")
         help_text.append("r - Refresh all\n", style="white")
         help_text.append("h - Show help | ", style="white")
@@ -197,22 +174,50 @@ class CLI:
 
         return Panel(help_text, title="Help", border_style="yellow")
 
-    def refresh_data(self):
-        """Refresh all data from API."""
+    def refresh_balances(self):
+        """Refresh account balances from API."""
         try:
-            # Refresh positions
-            self.position_manager.refresh_positions()
-            self.position_manager.refresh_balances()
+            account_data = self.client.get_account()
+            self.balances.clear()
 
-            # Refresh orders
-            self.order_manager.refresh_open_orders()
+            for asset, balance_data in account_data.items():
+                if isinstance(balance_data, dict):
+                    free = float(balance_data.get("available", 0))
+                    locked = float(balance_data.get("locked", 0))
+                    staked = float(balance_data.get("staked", 0))
+                    self.balances[asset] = {
+                        "free": free,
+                        "locked": locked,
+                        "staked": staked,
+                        "total": free + locked + staked
+                    }
+        except Exception as e:
+            print(f"Error refreshing balances: {e}")
 
-            # Get current price
-            ticker = self.client.get_ticker(self.current_symbol)
-            self.current_price = float(ticker.get("lastPrice", 0))
+    def refresh_data(self, silent=False):
+        """Refresh all data from API.
+
+        Args:
+            silent: If True, don't print error messages (for auto-refresh)
+        """
+        try:
+            with self.refresh_lock:
+                # Refresh balances
+                self.refresh_balances()
+
+                # Refresh orders
+                self.order_manager.refresh_open_orders()
+
+                # Get current price
+                ticker = self.client.get_ticker(self.current_symbol)
+                self.current_price = float(ticker.get("lastPrice", 0))
+
+                # Update last refresh time
+                self.last_refresh_time = time.time()
 
         except Exception as e:
-            self.console.print(f"[red]Error refreshing data: {e}[/red]")
+            if not silent:
+                self.console.print(f"[red]Error refreshing data: {e}[/red]")
 
     def display_dashboard(self):
         """Display main dashboard."""
@@ -220,10 +225,6 @@ class CLI:
 
         # Display header
         self.console.print(self.display_header())
-        self.console.print()
-
-        # Display positions
-        self.console.print(self.display_positions())
         self.console.print()
 
         # Display orders
@@ -248,17 +249,6 @@ class CLI:
                 self.console.print("[red]Invalid quantity[/red]")
                 return
 
-            # Validate order
-            portfolio_value = self.position_manager.get_portfolio_value()
-            is_valid, msg = self.risk_manager.validate_order(
-                self.current_symbol, "Bid", quantity, self.current_price,
-                self.position_manager.positions, portfolio_value
-            )
-
-            if not is_valid:
-                self.console.print(f"[red]Order validation failed: {msg}[/red]")
-                return
-
             # Place order
             order = self.order_manager.buy_market(self.current_symbol, quantity)
             if order:
@@ -280,17 +270,6 @@ class CLI:
 
             if quantity <= 0:
                 self.console.print("[red]Invalid quantity[/red]")
-                return
-
-            # Validate order
-            portfolio_value = self.position_manager.get_portfolio_value()
-            is_valid, msg = self.risk_manager.validate_order(
-                self.current_symbol, "Ask", quantity, self.current_price,
-                self.position_manager.positions, portfolio_value
-            )
-
-            if not is_valid:
-                self.console.print(f"[red]Order validation failed: {msg}[/red]")
                 return
 
             # Place order
@@ -317,17 +296,6 @@ class CLI:
                 self.console.print("[red]Invalid quantity or price[/red]")
                 return
 
-            # Validate order
-            portfolio_value = self.position_manager.get_portfolio_value()
-            is_valid, msg = self.risk_manager.validate_order(
-                self.current_symbol, "Bid", quantity, price,
-                self.position_manager.positions, portfolio_value
-            )
-
-            if not is_valid:
-                self.console.print(f"[red]Order validation failed: {msg}[/red]")
-                return
-
             # Place order
             order = self.order_manager.buy_limit(self.current_symbol, quantity, price)
             if order:
@@ -350,17 +318,6 @@ class CLI:
 
             if quantity <= 0 or not price or price <= 0:
                 self.console.print("[red]Invalid quantity or price[/red]")
-                return
-
-            # Validate order
-            portfolio_value = self.position_manager.get_portfolio_value()
-            is_valid, msg = self.risk_manager.validate_order(
-                self.current_symbol, "Ask", quantity, price,
-                self.position_manager.positions, portfolio_value
-            )
-
-            if not is_valid:
-                self.console.print(f"[red]Order validation failed: {msg}[/red]")
                 return
 
             # Place order
@@ -587,6 +544,13 @@ class CLI:
 
         self.console.input("\nPress Enter to continue...")
 
+    def _auto_refresh_worker(self):
+        """Background worker that auto-refreshes data."""
+        while self.running:
+            time.sleep(self.auto_refresh_interval)
+            if self.running:
+                self.refresh_data(silent=True)
+
     def run(self):
         """Run the CLI interface."""
         self.running = True
@@ -598,7 +562,12 @@ class CLI:
             return
 
         self.console.print("[cyan]Starting Backpack CLI Bot...[/cyan]")
+        self.console.print("[dim]Auto-refresh enabled: Updates every 10 seconds[/dim]")
         self.refresh_data()
+
+        # Start auto-refresh background thread
+        refresh_thread = threading.Thread(target=self._auto_refresh_worker, daemon=True)
+        refresh_thread.start()
 
         while self.running:
             self.display_dashboard()
@@ -618,10 +587,6 @@ class CLI:
                 self.handle_tiered_buy()
             elif command == 'ts':
                 self.handle_tiered_sell()
-            elif command == 'p':
-                self.position_manager.refresh_positions()
-                self.console.print("[green]Positions refreshed[/green]")
-                self.console.input("\nPress Enter to continue...")
             elif command == 'o':
                 self.order_manager.refresh_open_orders()
                 self.console.print("[green]Orders refreshed[/green]")

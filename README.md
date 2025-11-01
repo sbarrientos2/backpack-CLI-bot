@@ -1,14 +1,15 @@
-# Ichibot for Backpack Exchange
+# Backpack Spot Trading Bot
 
-A Python-based CLI trading bot for Backpack exchange, designed for manual/hybrid trading with keyboard-based execution for maximum speed.
+A Python-based CLI trading bot for Backpack Exchange, focused on **spot trading** with keyboard-driven order execution for maximum speed.
 
 ## Features
 
-- **Fast Order Placement**: Keyboard-driven order entry and execution
-- **Position Management**: Track and manage open positions in real-time
-- **Risk Management**: Built-in stop losses, position sizing, and risk limits
-- **Real-time Market Data**: Live price feeds and order book updates
-- **Low Latency**: Optimized for fast order execution
+- **Fast Order Placement**: Keyboard-driven market and limit orders
+- **Tiered Orders**: Place multiple orders across a price range
+- **Order Management**: View and cancel open orders
+- **Real-time Updates**: Auto-refresh every 10 seconds
+- **Balance Tracking**: Monitor available, locked, and staked balances
+- **Clean Interface**: Minimalist terminal UI for distraction-free trading
 
 ## Installation
 
@@ -33,36 +34,52 @@ python main.py
 
 ## Keyboard Shortcuts
 
+**Order Placement:**
 - `b` - Buy market order
 - `s` - Sell market order
 - `l` - Limit buy order
 - `k` - Limit sell order
-- `p` - View positions
-- `o` - View open orders
-- `c` - Cancel all orders
+- `tb` - Tiered buy (multiple orders across price range)
+- `ts` - Tiered sell (multiple orders across price range)
+
+**Order Management:**
+- `o` - Refresh open orders
+- `c` - Cancel all orders for current symbol
+- `cr` - Cancel orders in price range
+
+**General:**
+- `sym` - Change trading symbol
+- `r` - Refresh all data
+- `h` - Show help
 - `q` - Quit
 
 ## Project Structure
 
 ```
-ichibot/
+backpack-cli-bot/
 ├── main.py              # Entry point
 ├── config.py            # Configuration management
+├── SECURITY.md          # Security best practices
 ├── api/
 │   ├── __init__.py
 │   └── backpack.py      # Backpack API client
 ├── core/
 │   ├── __init__.py
-│   ├── order_manager.py # Order placement and management
-│   ├── position_manager.py # Position tracking
-│   └── risk_manager.py  # Risk management logic
+│   └── order_manager.py # Order placement and management
 ├── ui/
 │   ├── __init__.py
-│   └── cli.py           # CLI interface
+│   └── cli.py           # CLI interface (Spot trading only)
 └── utils/
     ├── __init__.py
     └── helpers.py       # Utility functions
 ```
+
+## Important Notes
+
+- **Spot Trading Only**: This bot is designed for spot trading. It does not support perpetual futures.
+- **Security**: Read [SECURITY.md](SECURITY.md) for API key security best practices
+- **Auto-Refresh**: Data refreshes automatically every 10 seconds
+- **Portfolio**: Shows total USDC/USDT balance (available + locked + staked)
 
 ## License
 

@@ -52,6 +52,24 @@ If any of these return results, **your keys are compromised** and must be rotate
 
 ### Setting Up API Keys Securely
 
+**IMPORTANT: Sub-Account vs Main Account**
+
+Backpack Exchange uses sub-accounts to isolate funds and positions:
+- **Main Account**: Your primary account with full balance and perpetual positions
+- **Sub-Accounts**: Isolated accounts (like "CLI Bot", "Market Maker", etc.)
+
+**API keys are account-specific!** If you create API keys while viewing a sub-account, those keys can only access that sub-account's data.
+
+**To see perpetual positions in the bot:**
+1. Switch to your **Main account** in Backpack Exchange (look for the "M" icon)
+2. Go to Settings → API **while on the Main account**
+3. Create new API keys
+4. Update your `.env` file with these keys
+
+**Current limitation:** If you see "Positions unavailable - Use Main account API keys", your current API keys are from a sub-account without perpetual trading access.
+
+**Steps to set up:**
+
 1. Copy `.env.example` to `.env`:
    ```bash
    cp .env.example .env
