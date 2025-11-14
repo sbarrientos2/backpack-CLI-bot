@@ -11,8 +11,6 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.live import Live
 from rich.text import Text
-from prompt_toolkit import PromptSession
-from prompt_toolkit.key_binding import KeyBindings
 from datetime import datetime
 
 from api.backpack import BackpackClient
@@ -46,15 +44,6 @@ class CLI:
         self.auto_refresh_interval = 10  # seconds
         self.last_refresh_time = 0
         self.refresh_lock = threading.Lock()
-
-        # Key bindings
-        self.kb = KeyBindings()
-        self.setup_keybindings()
-
-    def setup_keybindings(self):
-        """Setup keyboard shortcuts."""
-        # These will be used in the main loop
-        pass
 
     def clear_screen(self):
         """Clear the terminal screen."""

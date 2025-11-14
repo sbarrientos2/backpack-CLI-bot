@@ -25,13 +25,9 @@ class Config:
 
     # API Endpoints
     API_BASE_URL: str = os.getenv("API_BASE_URL", "https://api.backpack.exchange")
-    WS_URL: str = os.getenv("WS_URL", "wss://ws.backpack.exchange")
 
     # Trading Configuration
     DEFAULT_SYMBOL: str = os.getenv("DEFAULT_SYMBOL", "SOL_USDC")
-    DEFAULT_LEVERAGE: int = int(os.getenv("DEFAULT_LEVERAGE", "1"))
-    MAX_POSITION_SIZE: float = float(os.getenv("MAX_POSITION_SIZE", "1000"))
-    RISK_PERCENTAGE: float = float(os.getenv("RISK_PERCENTAGE", "1.0"))
 
     @classmethod
     def validate(cls) -> bool:
